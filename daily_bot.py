@@ -9,10 +9,10 @@ from discord.ext import tasks
 # === KONFIGURASI ===
 DISCORD_USER_TOKEN = os.getenv("DISCORD_TOKEN")
 LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
-TIMEZONE_OFFSET = 7  # WIB (Indonesia Barat)
+TIMEZONE_OFFSET = 7  # WIB
 
 print(r'''
- 🌅 DAILY BOT - ULTIMATE EDITION
+ 🌅 DAILY BOT - BROADCAST EDITION
 ''')
 
 DB_FILE = "daily_list.json"
@@ -26,7 +26,6 @@ class DailyBot(discord.Client):
         self.log_channel = None 
 
     def load_data(self):
-        """Load database agar jadwal tersimpan selamanya"""
         if os.path.exists(DB_FILE):
             try:
                 with open(DB_FILE, "r") as f: return json.load(f)
@@ -38,10 +37,7 @@ class DailyBot(discord.Client):
             json.dump(self.daily_data, f, indent=4)
 
     async def send_log(self, message):
-        """Kirim laporan ke channel pantau"""
-        if not LOG_CHANNEL_ID: 
-            print(f"[CONSOLE] {message}")
-            return
+        if not LOG_CHANNEL_ID: return
         try:
             if not self.log_channel:
                 self.log_channel = await self.fetch_channel(int(LOG_CHANNEL_ID))
@@ -51,21 +47,18 @@ class DailyBot(discord.Client):
     async def on_ready(self):
         print(f"[✅] Login sebagai {self.user}")
         
-        # === MENU STARTUP ===
-        menu_msg = (
-            "✅ **SYSTEM ONLINE** - DAILY SCHEDULER\n"
+        menu = (
+            "✅ **SYSTEM ONLINE**\n"
             "------------------------------------------\n"
-            "💡 **DAFTAR PERINTAH UTAMA:**\n"
-            "1. `!add_daily [ID1] [ID2]... [PesanPagi] | [PesanMalam]`\n"
-            "   *(Input sekali, jalan selamanya tiap hari)*\n"
-            "2. `!remove_daily [ID]` : 🗑️ Hapus Jadwal\n"
-            "3. `!list_daily`        : 📋 Cek Daftar Channel\n"
-            "4. `!force_run`         : 🚀 Test Kirim Sekarang (Cek Error)\n"
-            "5. `!time`              : ⏰ Cek Waktu Bot\n"
-            "------------------------------------------\n"
-            f"📅 **Status Database:** {len(self.daily_data)} Channel Aktif"
+            "💡 **DAFTAR PERINTAH:**\n"
+            "1. `!add_daily [ID]... [PesanPagi] | [PesanMalam]`\n"
+            "2. `!send_now [pagi/malam]` : 🚀 Kirim Manual SEKARANG\n"
+            "3. `!remove_daily [ID]`     : 🗑️ Hapus Jadwal\n"
+            "4. `!list_daily`            : 📋 Cek List\n"
+            "5. `!time`                  : ⏰ Cek Waktu\n"
+            "------------------------------------------"
         )
-        await self.send_log(menu_msg)
+        await self.send_log(menu)
 
         if not self.scheduler_task.is_running():
             self.scheduler_task.start()
@@ -75,14 +68,31 @@ class DailyBot(discord.Client):
         content = message.content.strip()
         cmd = content.split(" ")[0].lower()
 
-        # === 1. ADD JADWAL (VERIFIKASI & BULK) ===
-        if cmd == "!add_daily":
+        # === 1. KIRIM MANUAL SEKARANG (FITUR BARU) ===
+        if cmd == "!send_now":
+            # Cek argumen: maunya pagi atau malam?
+            args = content[len("!send_now"):].strip().lower()
+            
+            if "pagi" in args or "gm" in args:
+                await message.reply("🚀 **Memulai Broadcast Manual (Pesan PAGI)...**")
+                # Parameter "am" mengambil pesan pagi dari database
+                await self.run_batch("MANUAL BROADCAST (PAGI)", "am")
+                
+            elif "malam" in args or "gn" in args:
+                await message.reply("🚀 **Memulai Broadcast Manual (Pesan MALAM)...**")
+                # Parameter "pm" mengambil pesan malam dari database
+                await self.run_batch("MANUAL BROADCAST (MALAM)", "pm")
+                
+            else:
+                await message.reply("❌ **Format Salah!**\nGunakan:\n`!send_now pagi` (Kirim pesan GM)\n`!send_now malam` (Kirim pesan GN)")
+
+        # === 2. ADD JADWAL ===
+        elif cmd == "!add_daily":
             try:
                 if "|" not in content:
-                    await message.reply("❌ Error: Pisahkan pesan pagi dan malam dengan `|`")
+                    await message.reply("❌ Error: Pisahkan pesan dengan `|`")
                     return
 
-                # Parsing Input
                 raw_args = content[len("!add_daily"):].strip()
                 left_part, msg_malam = raw_args.split("|", 1)
                 msg_malam = msg_malam.strip()
@@ -91,7 +101,6 @@ class DailyBot(discord.Client):
                 target_ids = []
                 msg_pagi_words = []
                 
-                # Pisahkan ID (Angka) dengan Kata-kata Pesan
                 found_text = False
                 for word in left_words:
                     if word.isdigit() and len(word) > 15 and not found_text:
@@ -106,55 +115,39 @@ class DailyBot(discord.Client):
                     await message.reply("❌ Tidak ada ID Channel.")
                     return
 
-                # === PROSES VERIFIKASI ===
-                msg_loading = await message.reply("⏳ **Sedang memverifikasi ID Channel...**")
+                msg_loading = await message.reply("⏳ **Memverifikasi...**")
                 
-                success_list = []
-                failed_list = []
-
+                success_lines = []
+                failed_lines = []
+                
                 for cid in target_ids:
                     try:
-                        # Cek apakah channel valid dan bisa diakses
                         chan = await self.fetch_channel(int(cid))
-                        
-                        # Ambil nama Server/Grup
-                        if hasattr(chan, 'guild'): server_name = chan.guild.name
-                        elif hasattr(chan, 'recipient'): server_name = f"DM: {chan.recipient.name}"
-                        else: server_name = "Group DM"
-                        
-                        # Simpan ke Database
+                        if hasattr(chan, 'guild'): server = chan.guild.name
+                        elif hasattr(chan, 'recipient'): server = f"DM: {chan.recipient.name}"
+                        else: server = "Group DM"
+                            
                         self.daily_data[cid] = {"am": msg_pagi, "pm": msg_malam}
-                        
-                        # Tambahkan ke Laporan Sukses
-                        success_list.append(f"✅ **{server_name}** | `#{chan.name}`")
+                        success_lines.append(f"✅ **{server}** | `#{chan.name}`")
                     except:
-                        # Jika gagal (ID Salah / Tidak ada akses)
-                        failed_list.append(f"❌ ID: `{cid}` (Tidak Ditemukan/No Access)")
+                        failed_lines.append(f"❌ ID `{cid}` (Gagal Akses)")
 
                 self.save_data()
-                
-                # === BUAT LAPORAN ===
-                report_msg = f"📝 **LAPORAN INPUT JADWAL**\n\n"
-                
-                if success_list:
-                    report_msg += "**BERHASIL:**\n" + "\n".join(success_list)
-                
-                if failed_list:
-                    report_msg += "\n\n**GAGAL:**\n" + "\n".join(failed_list)
 
-                report_msg += f"\n\n⚙️ **Pesan Diset:**\n☀️ `{msg_pagi}`\n🌙 `{msg_malam}`"
+                report = "📝 **LAPORAN INPUT:**\n\n"
+                if success_lines: report += "**BERHASIL:**\n" + "\n".join(success_lines) + "\n"
+                if failed_lines: report += "\n**GAGAL:**\n" + "\n".join(failed_lines) + "\n"
                 
-                # Kirim laporan (potong jika terlalu panjang buat Discord)
-                if len(report_msg) > 1900: 
-                    report_msg = report_msg[:1900] + "\n...(List terpotong)"
+                report += f"\n⚙️ **Pesan:**\n☀️ `{msg_pagi}`\n🌙 `{msg_malam}`"
+                if len(report) > 1900: report = report[:1900] + "\n...(Terpotong)"
                 
-                await msg_loading.edit(content=report_msg)
-                await self.send_log(f"📝 **Database Update:** {len(success_list)} channel baru ditambahkan.")
+                await msg_loading.edit(content=report)
+                await self.send_log(f"📝 Added {len(success_lines)} channels.")
 
             except Exception as e:
                 await message.reply(f"❌ Error: {e}")
 
-        # === 2. REMOVE JADWAL ===
+        # === 3. REMOVE ===
         elif cmd == "!remove_daily":
             try:
                 raw_ids = content[len("!remove_daily"):].strip().split()
@@ -163,66 +156,52 @@ class DailyBot(discord.Client):
                     if cid in self.daily_data:
                         del self.daily_data[cid]
                         deleted.append(cid)
-                
                 self.save_data()
-                await message.reply(f"🗑️ Dihapus: {len(deleted)} jadwal.")
+                await message.reply(f"🗑️ Menghapus {len(deleted)} jadwal.")
             except: pass
 
-        # === 3. LIST JADWAL ===
+        # === 4. LIST ===
         elif cmd == "!list_daily":
-            if not self.daily_data: 
-                await message.reply("📭 Database Kosong.")
+            if not self.daily_data: await message.reply("📭 Database Kosong.")
             else:
-                chunks = ["**📅 DAFTAR JADWAL AKTIF:**\n"]
+                chunks = ["**📅 LIST JADWAL:**\n"]
                 curr = chunks[0]
                 for cid, m in self.daily_data.items():
-                    line = f"<#{cid}> : `{m['am']}` | `{m['pm']}`\n"
+                    line = f"• <#{cid}> : `{m['am']}` | `{m['pm']}`\n"
                     if len(curr) + len(line) > 1900: 
-                        chunks.append(line)
-                        curr = line
-                    else: 
-                        curr += line
-                        chunks[-1] = curr
-                
+                        chunks.append(line); curr = line
+                    else: curr += line; chunks[-1] = curr
                 for c in chunks: await message.reply(c)
 
-        # === 4. MANUAL TEST (FORCE RUN) ===
-        elif cmd == "!force_run":
-             await message.reply("🚀 **Memulai Manual Run (Test)...**")
-             await self.run_batch("MANUAL TEST", "am")
-
-        # === 5. CEK WAKTU ===
+        # === 5. TIME ===
         elif cmd == "!time":
             now = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
-            await message.reply(f"⏰ Jam Bot (WIB): `{now.strftime('%H:%M:%S')}`")
+            await message.reply(f"⏰ `{now.strftime('%H:%M:%S')}`")
 
-    # === FUNGSI EKSEKUTOR BATCH (DENGAN LAPORAN DETIL) ===
+    # === CORE: EKSEKUSI PESAN ===
     async def run_batch(self, type_name, key):
+        """Fungsi ini dipanggil oleh Manual Command ATAU Otomatis Schedule"""
         total = len(self.daily_data)
         success = 0
         failed = 0
-        failed_details = [] # Nampung siapa aja yang gagal
-        
+        failed_details = []
+
         await self.send_log(f"⏳ **MEMULAI BATCH: {type_name}**\nTarget: {total} Channel")
 
         for cid, data in self.daily_data.items():
             try:
                 channel = await self.fetch_channel(int(cid))
-                await channel.send(data[key])
+                await channel.send(data[key]) # key = 'am' atau 'pm'
                 success += 1
-                await asyncio.sleep(2) # Delay biar aman
+                await asyncio.sleep(2) # Delay aman
             except Exception as e:
                 failed += 1
-                # Analisa Error
                 err_msg = str(e)
-                if "Forbidden" in err_msg: reason = "Tidak ada izin chat"
-                elif "NotFound" in err_msg: reason = "Channel Dihapus"
-                else: reason = "Error Lain"
-                
-                failed_details.append(f"❌ <#{cid}> ({cid}) -> {reason}")
-                print(f"Gagal {cid}: {e}")
+                if "Forbidden" in err_msg: reason = "No Permission"
+                elif "NotFound" in err_msg: reason = "Channel Hilang"
+                else: reason = "Error"
+                failed_details.append(f"❌ <#{cid}> -> {reason}")
         
-        # Buat Laporan Akhir
         report = (
             f"✅ **BATCH SELESAI: {type_name}**\n"
             f"📊 **Statistik:**\n"
@@ -231,40 +210,34 @@ class DailyBot(discord.Client):
             f"--------------------------"
         )
 
-        # Lampirkan daftar yang gagal (jika ada)
         if failed_details:
-            report += "\n\n⚠️ **DAFTAR KEGAGALAN:**\n"
-            chunk_fail = ""
-            for line in failed_details:
-                if len(report) + len(chunk_fail) + len(line) > 1900:
-                    await self.send_log(report + chunk_fail)
-                    report = "⚠️ **(Lanjutan Gagal)...**\n"
-                    chunk_fail = ""
-                chunk_fail += line + "\n"
-            report += chunk_fail
+            report += "\n\n⚠️ **GAGAL:**\n" + "\n".join(failed_details)
 
-        await self.send_log(report)
+        # Kirim laporan akhir (potong jika kepanjangan)
+        if len(report) > 1900:
+            await self.send_log(report[:1900] + "\n...(Report Terpotong)")
+        else:
+            await self.send_log(report)
 
+    # === SCHEDULE OTOMATIS ===
     @tasks.loop(seconds=60) 
     async def scheduler_task(self):
         now = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
         current_time = now.strftime("%H:%M")
 
-        # === JAM 07:00 PAGI ===
+        # JAM 07:00 (Otomatis)
         if current_time == "07:00":
             if not self.sent_today_am: 
-                await self.run_batch("☀️ GM / PAGI", "am")
-                self.sent_today_am = True
-                self.sent_today_pm = False 
+                await self.run_batch("☀️ AUTO SCHEDULE (PAGI)", "am")
+                self.sent_today_am = True; self.sent_today_pm = False 
 
-        # === JAM 19:00 MALAM ===
+        # JAM 19:00 (Otomatis)
         elif current_time == "19:00":
             if not self.sent_today_pm:
-                await self.run_batch("🌙 GN / MALAM", "pm")
-                self.sent_today_pm = True
-                self.sent_today_am = False 
+                await self.run_batch("🌙 AUTO SCHEDULE (MALAM)", "pm")
+                self.sent_today_pm = True; self.sent_today_am = False 
 
-        # Reset flag
+        # Reset flag harian
         else:
             if current_time == "07:01": self.sent_today_am = True
             if current_time == "19:01": self.sent_today_pm = True
