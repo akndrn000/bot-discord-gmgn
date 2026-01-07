@@ -12,7 +12,7 @@ LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
 TIMEZONE_OFFSET = 7  # WIB
 
 print(r'''
- 🌅 DAILY BOT - BROADCAST EDITION
+ 🌅 DAILY BOT - TURBO & CLEANER
 ''')
 
 DB_FILE = "daily_list.json"
@@ -48,14 +48,15 @@ class DailyBot(discord.Client):
         print(f"[✅] Login sebagai {self.user}")
         
         menu = (
-            "✅ **SYSTEM ONLINE**\n"
+            "✅ **SYSTEM ONLINE** (TURBO + CLEANER)\n"
             "------------------------------------------\n"
             "💡 **DAFTAR PERINTAH:**\n"
             "1. `!add_daily [ID]... [PesanPagi] | [PesanMalam]`\n"
-            "2. `!send_now [pagi/malam]` : 🚀 Kirim Manual SEKARANG\n"
+            "2. `!send_now [pagi/malam]` : 🚀 Kirim INSTAN (Turbo)\n"
             "3. `!remove_daily [ID]`     : 🗑️ Hapus Jadwal\n"
-            "4. `!list_daily`            : 📋 Cek List\n"
-            "5. `!time`                  : ⏰ Cek Waktu\n"
+            "4. `!clear`                 : 🧹 Hapus 30 Pesan Terakhir\n"
+            "5. `!list_daily`            : 📋 Cek List\n"
+            "6. `!time`                  : ⏰ Cek Waktu\n"
             "------------------------------------------"
         )
         await self.send_log(menu)
@@ -68,25 +69,44 @@ class DailyBot(discord.Client):
         content = message.content.strip()
         cmd = content.split(" ")[0].lower()
 
-        # === 1. KIRIM MANUAL SEKARANG (FITUR BARU) ===
-        if cmd == "!send_now":
-            # Cek argumen: maunya pagi atau malam?
+        # === 1. FITUR CLEAR / PEMBERSIH ===
+        if cmd == "!clear":
+            # Info awal
+            info = await message.reply("🧹 **Membersihkan 30 pesan terakhir...** (Mode Aman)")
+            await asyncio.sleep(2) 
+
+            deleted_count = 0
+            # Hapus 30 pesan terakhir di channel ini
+            async for msg in message.channel.history(limit=30):
+                try:
+                    await msg.delete()
+                    deleted_count += 1
+                    # Jeda wajib 1.5 detik agar akun tidak kena ban Discord
+                    await asyncio.sleep(1.5) 
+                except: 
+                    pass
+            
+            # Lapor ke log (karena pesan di channel target sudah hilang)
+            await self.send_log(f"🧹 **Cleaner:** Menghapus {deleted_count} pesan di <#{message.channel.id}>.")
+
+        # === 2. KIRIM MANUAL SEKARANG (MODE NGEBUT) ===
+        elif cmd == "!send_now":
             args = content[len("!send_now"):].strip().lower()
             
             if "pagi" in args or "gm" in args:
-                await message.reply("🚀 **Memulai Broadcast Manual (Pesan PAGI)...**")
-                # Parameter "am" mengambil pesan pagi dari database
-                await self.run_batch("MANUAL BROADCAST (PAGI)", "am")
+                await message.reply("🚀 **Mengirim Pesan PAGI (Mode Cepat)...**")
+                # delay=0 artinya TIDAK MENUNGGU SAMA SEKALI
+                await self.run_batch("MANUAL (PAGI)", "am", delay=0)
                 
             elif "malam" in args or "gn" in args:
-                await message.reply("🚀 **Memulai Broadcast Manual (Pesan MALAM)...**")
-                # Parameter "pm" mengambil pesan malam dari database
-                await self.run_batch("MANUAL BROADCAST (MALAM)", "pm")
+                await message.reply("🚀 **Mengirim Pesan MALAM (Mode Cepat)...**")
+                # delay=0 artinya TIDAK MENUNGGU SAMA SEKALI
+                await self.run_batch("MANUAL (MALAM)", "pm", delay=0)
                 
             else:
-                await message.reply("❌ **Format Salah!**\nGunakan:\n`!send_now pagi` (Kirim pesan GM)\n`!send_now malam` (Kirim pesan GN)")
+                await message.reply("❌ Format: `!send_now pagi` atau `!send_now malam`")
 
-        # === 2. ADD JADWAL ===
+        # === 3. ADD JADWAL ===
         elif cmd == "!add_daily":
             try:
                 if "|" not in content:
@@ -115,7 +135,7 @@ class DailyBot(discord.Client):
                     await message.reply("❌ Tidak ada ID Channel.")
                     return
 
-                msg_loading = await message.reply("⏳ **Memverifikasi...**")
+                msg_loading = await message.reply("⏳ **Verifikasi...**")
                 
                 success_lines = []
                 failed_lines = []
@@ -147,7 +167,7 @@ class DailyBot(discord.Client):
             except Exception as e:
                 await message.reply(f"❌ Error: {e}")
 
-        # === 3. REMOVE ===
+        # === 4. REMOVE ===
         elif cmd == "!remove_daily":
             try:
                 raw_ids = content[len("!remove_daily"):].strip().split()
@@ -160,7 +180,7 @@ class DailyBot(discord.Client):
                 await message.reply(f"🗑️ Menghapus {len(deleted)} jadwal.")
             except: pass
 
-        # === 4. LIST ===
+        # === 5. LIST ===
         elif cmd == "!list_daily":
             if not self.daily_data: await message.reply("📭 Database Kosong.")
             else:
@@ -173,27 +193,32 @@ class DailyBot(discord.Client):
                     else: curr += line; chunks[-1] = curr
                 for c in chunks: await message.reply(c)
 
-        # === 5. TIME ===
+        # === 6. TIME ===
         elif cmd == "!time":
             now = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
             await message.reply(f"⏰ `{now.strftime('%H:%M:%S')}`")
 
-    # === CORE: EKSEKUSI PESAN ===
-    async def run_batch(self, type_name, key):
-        """Fungsi ini dipanggil oleh Manual Command ATAU Otomatis Schedule"""
+    # === CORE: EKSEKUSI PESAN (DENGAN PENGATUR KECEPATAN) ===
+    async def run_batch(self, type_name, key, delay=2):
+        """
+        delay=2 : Mode Aman (Jadwal Otomatis)
+        delay=0 : Mode Turbo (Manual !send_now)
+        """
         total = len(self.daily_data)
         success = 0
         failed = 0
         failed_details = []
 
-        await self.send_log(f"⏳ **MEMULAI BATCH: {type_name}**\nTarget: {total} Channel")
+        await self.send_log(f"⏳ **MEMULAI BATCH: {type_name}**\nTarget: {total} Channel\nKecepatan: {'⚡ INSTAN' if delay==0 else '🐢 AMAN (2s)'}")
 
         for cid, data in self.daily_data.items():
             try:
                 channel = await self.fetch_channel(int(cid))
-                await channel.send(data[key]) # key = 'am' atau 'pm'
+                await channel.send(data[key]) 
                 success += 1
-                await asyncio.sleep(2) # Delay aman
+                
+                if delay > 0: await asyncio.sleep(delay)
+                    
             except Exception as e:
                 failed += 1
                 err_msg = str(e)
@@ -213,31 +238,30 @@ class DailyBot(discord.Client):
         if failed_details:
             report += "\n\n⚠️ **GAGAL:**\n" + "\n".join(failed_details)
 
-        # Kirim laporan akhir (potong jika kepanjangan)
         if len(report) > 1900:
             await self.send_log(report[:1900] + "\n...(Report Terpotong)")
         else:
             await self.send_log(report)
 
-    # === SCHEDULE OTOMATIS ===
+    # === SCHEDULE OTOMATIS (TETAP PAKAI DELAY BIAR AMAN) ===
     @tasks.loop(seconds=60) 
     async def scheduler_task(self):
         now = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
         current_time = now.strftime("%H:%M")
 
-        # JAM 07:00 (Otomatis)
+        # JAM 07:00 (Otomatis - Pakai Delay 2 detik)
         if current_time == "07:00":
             if not self.sent_today_am: 
-                await self.run_batch("☀️ AUTO SCHEDULE (PAGI)", "am")
+                await self.run_batch("☀️ AUTO SCHEDULE (PAGI)", "am", delay=2)
                 self.sent_today_am = True; self.sent_today_pm = False 
 
-        # JAM 19:00 (Otomatis)
+        # JAM 19:00 (Otomatis - Pakai Delay 2 detik)
         elif current_time == "19:00":
             if not self.sent_today_pm:
-                await self.run_batch("🌙 AUTO SCHEDULE (MALAM)", "pm")
+                await self.run_batch("🌙 AUTO SCHEDULE (MALAM)", "pm", delay=2)
                 self.sent_today_pm = True; self.sent_today_am = False 
 
-        # Reset flag harian
+        # Reset flag
         else:
             if current_time == "07:01": self.sent_today_am = True
             if current_time == "19:01": self.sent_today_pm = True
