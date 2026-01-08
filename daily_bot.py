@@ -12,7 +12,7 @@ LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
 TIMEZONE_OFFSET = 7  # WIB
 
 print(r'''
- 🌅 DAILY BOT - FINAL COMPLETE
+ 🌅 DAILY BOT - FINAL NEAT (ALL ALIGNED)
 ''')
 
 DB_FILE = "daily_list.json"
@@ -44,20 +44,21 @@ class DailyBot(discord.Client):
             await self.log_channel.send(message)
         except: pass
 
-    # === FUNGSI PEMBUAT TEKS MENU ===
+    # === FUNGSI MENU RAPI ===
     def get_menu_text(self):
         return (
-            "✅ **SYSTEM ONLINE** (ALL FEATURES)\n"
-            "------------------------------------------\n"
-            "💡 **DAFTAR PERINTAH:**\n"
-            "1. `!add_daily [ID]... [PesanPagi] | [PesanMalam]`\n"
-            "2. `!send_now [pagi/malam]` : 🚀 Kirim INSTAN (Turbo)\n"
-            "3. `!remove_daily [ID]`     : 🗑️ Hapus Jadwal\n"
-            "4. `!clear`                 : 🧹 Hapus 30 Pesan Terakhir\n"
-            "5. `!list_daily`            : 📋 Cek List Channel\n"
-            "6. `!time`                  : ⏰ Cek Waktu Server\n"
-            "7. `!menu`                  : 📜 **Tampilkan Menu Ini**\n"
-            "------------------------------------------"
+            "✅ **SYSTEM ONLINE**\n"
+            "```asciidoc\n"
+            "= DAFTAR PERINTAH =\n"
+            "!add_daily [ID]...   :: ➕ Tambah/Update Jadwal\n"
+            "   └ Format: !add_daily ID Pagi | Malam\n"
+            "!send_now [opsi]     :: 🚀 Kirim Instan (pagi/malam)\n"
+            "!remove_daily [ID]   :: 🗑️ Hapus Jadwal\n"
+            "!break               :: 🧹 Hapus 30 Pesan (Cleaner)\n"
+            "!list_daily          :: 📋 Cek List Channel\n"
+            "!time                :: ⏰ Cek Waktu Server\n"
+            "!daftar              :: 📜 Tampilkan Menu Ini\n"
+            "```"
         )
 
     async def on_ready(self):
@@ -74,36 +75,39 @@ class DailyBot(discord.Client):
         content = message.content.strip()
         cmd = content.split(" ")[0].lower()
 
-        # === 1. TAMPILKAN MENU (FITUR BARU) ===
-        if cmd == "!menu":
+        # === 1. TAMPILKAN DAFTAR MENU ===
+        if cmd == "!daftar":
             await message.reply(self.get_menu_text())
 
-        # === 2. FITUR CLEAR / PEMBERSIH ===
-        elif cmd == "!clear":
-            info = await message.reply("🧹 **Membersihkan 30 pesan terakhir...** (Mode Aman)")
-            await asyncio.sleep(2) 
+        # === 2. FITUR BREAK (CLEANER) ===
+        elif cmd == "!break":
+            msg_load = await message.reply("🧹 **Membersihkan...**")
+            await asyncio.sleep(1) 
 
             deleted_count = 0
             async for msg in message.channel.history(limit=30):
                 try:
-                    await msg.delete()
-                    deleted_count += 1
-                    await asyncio.sleep(1.5) 
-                except: 
-                    pass
+                    if msg.id != msg_load.id: # Jangan hapus pesan loading dulu
+                        await msg.delete()
+                        deleted_count += 1
+                        await asyncio.sleep(1.0) 
+                except: pass
             
-            await self.send_log(f"🧹 **Cleaner:** Menghapus {deleted_count} pesan di <#{message.channel.id}>.")
+            # Update pesan loading jadi laporan akhir
+            await msg_load.edit(content=f"🧹 **SELESAI**: Menghapus {deleted_count} pesan.")
+            await asyncio.sleep(3)
+            await msg_load.delete()
 
-        # === 3. KIRIM MANUAL SEKARANG (MODE NGEBUT) ===
+        # === 3. KIRIM MANUAL ===
         elif cmd == "!send_now":
             args = content[len("!send_now"):].strip().lower()
             
             if "pagi" in args or "gm" in args:
-                await message.reply("🚀 **Mengirim Pesan PAGI (Mode Cepat)...**")
+                await message.reply("🚀 **Mengirim Pesan PAGI...**")
                 await self.run_batch("MANUAL (PAGI)", "am", delay=0)
                 
             elif "malam" in args or "gn" in args:
-                await message.reply("🚀 **Mengirim Pesan MALAM (Mode Cepat)...**")
+                await message.reply("🚀 **Mengirim Pesan MALAM...**")
                 await self.run_batch("MANUAL (MALAM)", "pm", delay=0)
                 
             else:
@@ -113,7 +117,7 @@ class DailyBot(discord.Client):
         elif cmd == "!add_daily":
             try:
                 if "|" not in content:
-                    await message.reply("❌ Error: Pisahkan pesan dengan `|`")
+                    await message.reply("❌ Error: Pisahkan pesan pagi dan malam dengan tanda `|`")
                     return
 
                 raw_args = content[len("!add_daily"):].strip()
@@ -138,7 +142,7 @@ class DailyBot(discord.Client):
                     await message.reply("❌ Tidak ada ID Channel.")
                     return
 
-                msg_loading = await message.reply("⏳ **Verifikasi...**")
+                msg_loading = await message.reply("⏳ **Memproses...**")
                 
                 success_lines = []
                 failed_lines = []
@@ -146,26 +150,29 @@ class DailyBot(discord.Client):
                 for cid in target_ids:
                     try:
                         chan = await self.fetch_channel(int(cid))
-                        if hasattr(chan, 'guild'): server = chan.guild.name
-                        elif hasattr(chan, 'recipient'): server = f"DM: {chan.recipient.name}"
-                        else: server = "Group DM"
-                            
                         self.daily_data[cid] = {"am": msg_pagi, "pm": msg_malam}
-                        success_lines.append(f"✅ **{server}** | `#{chan.name}`")
+                        success_lines.append(f"Channel : {chan.name} ({cid})")
                     except:
-                        failed_lines.append(f"❌ ID `{cid}` (Gagal Akses)")
+                        failed_lines.append(f"ID      : {cid} (Error)")
 
                 self.save_data()
 
-                report = "📝 **LAPORAN INPUT:**\n\n"
-                if success_lines: report += "**BERHASIL:**\n" + "\n".join(success_lines) + "\n"
-                if failed_lines: report += "\n**GAGAL:**\n" + "\n".join(failed_lines) + "\n"
+                # Buat Laporan Rapi
+                report = "📝 **LAPORAN INPUT**\n```yaml\n"
+                if success_lines:
+                    report += "BERHASIL:\n"
+                    for s in success_lines: report += f"- {s}\n"
+                if failed_lines:
+                    report += "\nGAGAL:\n"
+                    for f in failed_lines: report += f"- {f}\n"
                 
-                report += f"\n⚙️ **Pesan:**\n☀️ `{msg_pagi}`\n🌙 `{msg_malam}`"
-                if len(report) > 1900: report = report[:1900] + "\n...(Terpotong)"
+                report += f"\nSETTING PESAN:\n"
+                report += f"Pagi  : \"{msg_pagi}\"\n"
+                report += f"Malam : \"{msg_malam}\"\n"
+                report += "```"
                 
                 await msg_loading.edit(content=report)
-                await self.send_log(f"📝 Added {len(success_lines)} channels.")
+                await self.send_log(f"📝 Database updated: {len(self.daily_data)} channels total.")
 
             except Exception as e:
                 await message.reply(f"❌ Error: {e}")
@@ -183,23 +190,51 @@ class DailyBot(discord.Client):
                 await message.reply(f"🗑️ Menghapus {len(deleted)} jadwal.")
             except: pass
 
-        # === 6. LIST ===
+        # === 6. LIST RAPI ===
         elif cmd == "!list_daily":
-            if not self.daily_data: await message.reply("📭 Database Kosong.")
+            if not self.daily_data: 
+                await message.reply("📭 Database Kosong.")
             else:
-                chunks = ["**📅 LIST JADWAL:**\n"]
-                curr = chunks[0]
+                chunks = ["📋 **LIST JADWAL AKTIF**"]
+                current_chunk = "```yaml\n"
+                
+                i = 1
                 for cid, m in self.daily_data.items():
-                    line = f"• <#{cid}> : `{m['am']}` | `{m['pm']}`\n"
-                    if len(curr) + len(line) > 1900: 
-                        chunks.append(line); curr = line
-                    else: curr += line; chunks[-1] = curr
+                    # Format Rapi per Item
+                    entry = (
+                        f"#{i} ID   : {cid}\n"
+                        f"   AM   : \"{m['am'][:30]}...\"\n"
+                        f"   PM   : \"{m['pm'][:30]}...\"\n\n"
+                    )
+                    
+                    if len(current_chunk) + len(entry) > 1900:
+                        current_chunk += "```"
+                        chunks.append(current_chunk)
+                        current_chunk = "```yaml\n" + entry
+                    else:
+                        current_chunk += entry
+                    i += 1
+                
+                current_chunk += "```"
+                chunks.append(current_chunk)
+                
                 for c in chunks: await message.reply(c)
 
-        # === 7. TIME ===
+        # === 7. TIME RAPI ===
         elif cmd == "!time":
             now = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
-            await message.reply(f"⏰ `{now.strftime('%H:%M:%S')}`")
+            time_str = now.strftime('%H:%M:%S')
+            date_str = now.strftime('%d-%m-%Y')
+            
+            msg = (
+                f"⏰ **WAKTU SERVER**\n"
+                f"```yaml\n"
+                f"Jam     : {time_str}\n"
+                f"Tanggal : {date_str}\n"
+                f"Zone    : WIB (UTC+7)\n"
+                f"```"
+            )
+            await message.reply(msg)
 
     # === CORE: EKSEKUSI PESAN ===
     async def run_batch(self, type_name, key, delay=2):
@@ -208,7 +243,7 @@ class DailyBot(discord.Client):
         failed = 0
         failed_details = []
 
-        await self.send_log(f"⏳ **MEMULAI BATCH: {type_name}**\nTarget: {total} Channel\nKecepatan: {'⚡ INSTAN' if delay==0 else '🐢 AMAN (2s)'}")
+        await self.send_log(f"⏳ **MEMULAI BATCH: {type_name}**")
 
         for cid, data in self.daily_data.items():
             try:
@@ -219,25 +254,25 @@ class DailyBot(discord.Client):
                     
             except Exception as e:
                 failed += 1
-                err_msg = str(e)
-                if "Forbidden" in err_msg: reason = "No Permission"
-                elif "NotFound" in err_msg: reason = "Channel Hilang"
-                else: reason = "Error"
-                failed_details.append(f"❌ <#{cid}> -> {reason}")
+                failed_details.append(f"- ID {cid} : {str(e)}")
         
+        # Laporan Akhir Rapi
         report = (
-            f"✅ **BATCH SELESAI: {type_name}**\n"
-            f"📊 **Statistik:**\n"
-            f"✅ Sukses : {success}\n"
-            f"❌ Gagal  : {failed}\n"
-            f"--------------------------"
+            f"✅ **BATCH SELESAI**\n"
+            f"```yaml\n"
+            f"Tipe      : {type_name}\n"
+            f"Total     : {total}\n"
+            f"Sukses    : {success}\n"
+            f"Gagal     : {failed}\n"
         )
-
+        
         if failed_details:
-            report += "\n\n⚠️ **GAGAL:**\n" + "\n".join(failed_details)
+            report += "\nDETAIL ERROR:\n" + "\n".join(failed_details)
+            
+        report += "```"
 
         if len(report) > 1900:
-            await self.send_log(report[:1900] + "\n...(Report Terpotong)")
+            await self.send_log(report[:1900] + "...\n```")
         else:
             await self.send_log(report)
 
@@ -249,12 +284,12 @@ class DailyBot(discord.Client):
 
         if current_time == "07:00":
             if not self.sent_today_am: 
-                await self.run_batch("☀️ AUTO SCHEDULE (PAGI)", "am", delay=2)
+                await self.run_batch("AUTO (PAGI)", "am", delay=2)
                 self.sent_today_am = True; self.sent_today_pm = False 
 
         elif current_time == "19:00":
             if not self.sent_today_pm:
-                await self.run_batch("🌙 AUTO SCHEDULE (MALAM)", "pm", delay=2)
+                await self.run_batch("AUTO (MALAM)", "pm", delay=2)
                 self.sent_today_pm = True; self.sent_today_am = False 
 
         else:
