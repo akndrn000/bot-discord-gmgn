@@ -12,7 +12,7 @@ LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
 TIMEZONE_OFFSET = 7  # WIB
 
 print(r'''
- 🌅 DAILY BOT - FINAL NEAT (ALL ALIGNED)
+ 🌅 DAILY BOT - FINAL (STARTUP STATUS & NEAT MENU)
 ''')
 
 DB_FILE = "daily_list.json"
@@ -50,8 +50,7 @@ class DailyBot(discord.Client):
             "✅ **SYSTEM ONLINE**\n"
             "```asciidoc\n"
             "= DAFTAR PERINTAH =\n"
-            "!add_daily [ID]...   :: ➕ Tambah/Update Jadwal\n"
-            "   └ Format: !add_daily ID Pagi | Malam\n"
+            "!add_daily [ID]...   :: ➕ Tambah/Update Jadwal [!add_daily ID Pagi | Malam]\n"
             "!send_now [opsi]     :: 🚀 Kirim Instan (pagi/malam)\n"
             "!remove_daily [ID]   :: 🗑️ Hapus Jadwal\n"
             "!break               :: 🧹 Hapus 30 Pesan (Cleaner)\n"
@@ -64,8 +63,13 @@ class DailyBot(discord.Client):
     async def on_ready(self):
         print(f"[✅] Login sebagai {self.user}")
         
-        # Kirim menu saat start
-        await self.send_log(self.get_menu_text())
+        # === PESAN STARTUP (SESUAI REQUEST) ===
+        # Bot hanya mengirim status aktif, tidak langsung menu panjang
+        startup_msg = (
+            "✅ **BOT AKTIF**\n"
+            "👉 Ketik `!daftar` untuk menampilkan menu."
+        )
+        await self.send_log(startup_msg)
 
         if not self.scheduler_task.is_running():
             self.scheduler_task.start()
