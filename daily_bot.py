@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from discord.ext import tasks
 
 # === KONFIGURASI ===
-# Pastikan Variable ini ada di Railway
 DISCORD_USER_TOKEN = os.getenv("DISCORD_TOKEN")
 LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
 TIMEZONE_OFFSET = 7  # WIB
@@ -16,11 +15,16 @@ DB_FILE = "daily_list.json"
 
 class DailyBot(discord.Client):
     def __init__(self):
-        # --- BAGIAN INI YANG MEMPERBAIKI ERROR ---
+        # ==========================================================
+        # BAGIAN INI YANG MEMPERBAIKI ERROR ANDA
+        # Discord.py v2.0+ WAJIB menyertakan 'intents' di sini
+        # ==========================================================
         intents = discord.Intents.default()
-        intents.message_content = True  # Izin baca pesan
+        intents.message_content = True  # Izin wajib baca pesan
+        
+        # Kita masukkan intents ke dalam inisialisasi Client
         super().__init__(intents=intents)
-        # -----------------------------------------
+        # ==========================================================
 
         self.daily_data = self.load_data()
         self.sent_today_am = False 
