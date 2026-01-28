@@ -82,7 +82,7 @@ async def menu_cmd(ctx):
     menu_box = (
         "```yaml\n"
         "🤖 CONTROL PANEL\n"
-        "!add_daily       : Tambah / Update Jadwal [Format: ID1 ID2 Pagi | Malam]\n\n"
+        "!add_daily       : Tambah / Update Jadwal [Format: ID1 ID2 Pagi | Malam]\n"
         "!send_now        : Kirim Pesan Manual [Opsi: pagi / malam]\n"
         "!remove_daily    : Hapus Jadwal Channel [Format: !remove_daily ID]\n"
         "!list_daily      : Cek Database List\n"
