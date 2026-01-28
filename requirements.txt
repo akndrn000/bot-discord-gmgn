@@ -1,4 +1,1 @@
-discord.py
-python-dotenv
-requests
-asyncio
+discord.py>=2.3.0
