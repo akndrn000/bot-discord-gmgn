@@ -2,24 +2,28 @@ import os
 import discord
 import asyncio
 import json
-import datetime
 from datetime import datetime, timedelta
 from discord.ext import tasks
 
 # === KONFIGURASI ===
-DISCORD_USER_TOKEN = os.getenv("DISCORD_TOKEN")
+# Pastikan environment variable diset atau ganti manual string di bawah
+DISCORD_USER_TOKEN = os.getenv("DISCORD_TOKEN") 
 LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
 TIMEZONE_OFFSET = 7  # WIB
+DB_FILE = "daily_list.json"
 
 print(r'''
- 🌅 DAILY BOT - FINAL (STARTUP STATUS & NEAT MENU)
+ 🌅 DAILY BOT - FINAL (OPTIMIZED & SECURED)
 ''')
-
-DB_FILE = "daily_list.json"
 
 class DailyBot(discord.Client):
     def __init__(self):
-        super().__init__()
+        # === UPDATE 1: WAJIB MENGGUNAKAN INTENTS ===
+        intents = discord.Intents.default()
+        intents.message_content = True # Agar bot bisa baca isi pesan (!perintah)
+        intents.guilds = True
+        super().__init__(intents=intents)
+        
         self.daily_data = self.load_data()
         self.sent_today_am = False 
         self.sent_today_pm = False
@@ -33,8 +37,11 @@ class DailyBot(discord.Client):
         return {}
 
     def save_data(self):
-        with open(DB_FILE, "w") as f:
-            json.dump(self.daily_data, f, indent=4)
+        try:
+            with open(DB_FILE, "w") as f:
+                json.dump(self.daily_data, f, indent=4)
+        except Exception as e:
+            print(f"❌ Gagal menyimpan database: {e}")
 
     async def send_log(self, message):
         if not LOG_CHANNEL_ID: return
@@ -50,35 +57,37 @@ class DailyBot(discord.Client):
             "✅ **SYSTEM ONLINE**\n"
             "```asciidoc\n"
             "= DAFTAR PERINTAH =\n"
-            "!add_daily [ID]...   :: ➕ Tambah/Update Jadwal [!add_daily ID Pagi | Malam]\n"
-            "!add_daily [ID]...   :: ➕ Tambah/Update Jadwal\n"
-            "   └ Format: !add_daily ID Pagi | Malam\n"
-            "!send_now [opsi]     :: 🚀 Kirim Instan (pagi/malam)\n"
-            "!remove_daily [ID]   :: 🗑️ Hapus Jadwal\n"
-            "!break               :: 🧹 Hapus 30 Pesan (Cleaner)\n"
-            "!list_daily          :: 📋 Cek List Channel\n"
-            "!time                :: ⏰ Cek Waktu Server\n"
-            "!daftar              :: 📜 Tampilkan Menu Ini\n"
+            "!add_daily [ID]...    :: ➕ Tambah/Update Jadwal\n"
+            "   └ Format: !add_daily ID_Channel Pesan Pagi | Pesan Malam\n"
+            "!send_now [opsi]      :: 🚀 Kirim Instan (pagi/malam)\n"
+            "!remove_daily [ID]    :: 🗑️ Hapus Jadwal\n"
+            "!break                :: 🧹 Hapus 30 Pesan (Cleaner)\n"
+            "!list_daily           :: 📋 Cek List Channel\n"
+            "!time                 :: ⏰ Cek Waktu Server\n"
+            "!daftar               :: 📜 Tampilkan Menu Ini\n"
             "```"
         )
 
     async def on_ready(self):
-        print(f"[✅] Login sebagai {self.user}")
-
-        # === PESAN STARTUP (SESUAI REQUEST) ===
-        # Bot hanya mengirim status aktif, tidak langsung menu panjang
+        print(f"[✅] Login berhasil sebagai: {self.user}")
+        
+        # Pesan Startup
         startup_msg = (
             "✅ **BOT AKTIF**\n"
             "👉 Ketik `!daftar` untuk menampilkan menu."
         )
         await self.send_log(startup_msg)
 
+        # Mulai loop scheduler jika belum jalan
         if not self.scheduler_task.is_running():
             self.scheduler_task.start()
 
     async def on_message(self, message):
+        # Mencegah bot merespon bot lain atau dirinya sendiri (kecuali untuk command sendiri)
         if message.author.id != self.user.id: return
+        
         content = message.content.strip()
+        if not content: return
         cmd = content.split(" ")[0].lower()
 
         # === 1. TAMPILKAN DAFTAR MENU ===
@@ -91,15 +100,15 @@ class DailyBot(discord.Client):
             await asyncio.sleep(1) 
 
             deleted_count = 0
+            # History limit
             async for msg in message.channel.history(limit=30):
                 try:
-                    if msg.id != msg_load.id: # Jangan hapus pesan loading dulu
+                    if msg.id != msg_load.id: 
                         await msg.delete()
                         deleted_count += 1
-                        await asyncio.sleep(1.0) 
+                        await asyncio.sleep(0.8) # Sedikit delay agar aman
                 except: pass
 
-            # Update pesan loading jadi laporan akhir
             await msg_load.edit(content=f"🧹 **SELESAI**: Menghapus {deleted_count} pesan.")
             await asyncio.sleep(3)
             await msg_load.delete()
@@ -110,11 +119,12 @@ class DailyBot(discord.Client):
 
             if "pagi" in args or "gm" in args:
                 await message.reply("🚀 **Mengirim Pesan PAGI...**")
-                await self.run_batch("MANUAL (PAGI)", "am", delay=0)
+                # Delay 1 detik per pesan untuk keamanan rate limit manual
+                await self.run_batch("MANUAL (PAGI)", "am", delay=1) 
 
             elif "malam" in args or "gn" in args:
                 await message.reply("🚀 **Mengirim Pesan MALAM...**")
-                await self.run_batch("MANUAL (MALAM)", "pm", delay=0)
+                await self.run_batch("MANUAL (MALAM)", "pm", delay=1)
 
             else:
                 await message.reply("❌ Format: `!send_now pagi` atau `!send_now malam`")
@@ -123,7 +133,7 @@ class DailyBot(discord.Client):
         elif cmd == "!add_daily":
             try:
                 if "|" not in content:
-                    await message.reply("❌ Error: Pisahkan pesan pagi dan malam dengan tanda `|`")
+                    await message.reply("❌ Error: Pisahkan pesan pagi dan malam dengan tanda `|`\nContoh: `!add_daily 123456789 Selamat Pagi | Selamat Malam`")
                     return
 
                 raw_args = content[len("!add_daily"):].strip()
@@ -136,6 +146,7 @@ class DailyBot(discord.Client):
 
                 found_text = False
                 for word in left_words:
+                    # Logika deteksi ID: Angka dan panjang > 15 digit
                     if word.isdigit() and len(word) > 15 and not found_text:
                         target_ids.append(word)
                     else:
@@ -145,21 +156,26 @@ class DailyBot(discord.Client):
                 msg_pagi = " ".join(msg_pagi_words)
 
                 if not target_ids:
-                    await message.reply("❌ Tidak ada ID Channel.")
+                    await message.reply("❌ Tidak ada ID Channel yang valid terdeteksi.")
                     return
 
-                msg_loading = await message.reply("⏳ **Memproses...**")
+                msg_loading = await message.reply("⏳ **Memproses Database...**")
 
                 success_lines = []
                 failed_lines = []
 
                 for cid in target_ids:
                     try:
+                        # Validasi apakah bot bisa akses channel tersebut
                         chan = await self.fetch_channel(int(cid))
                         self.daily_data[cid] = {"am": msg_pagi, "pm": msg_malam}
-                        success_lines.append(f"Channel : {chan.name} ({cid})")
-                    except:
-                        failed_lines.append(f"ID      : {cid} (Error)")
+                        success_lines.append(f"Channel : {chan.name}")
+                    except discord.Forbidden:
+                        failed_lines.append(f"ID {cid}: Bot tidak punya akses")
+                    except discord.NotFound:
+                        failed_lines.append(f"ID {cid}: Channel tidak ditemukan")
+                    except Exception as e:
+                        failed_lines.append(f"ID {cid}: Error")
 
                 self.save_data()
 
@@ -181,7 +197,7 @@ class DailyBot(discord.Client):
                 await self.send_log(f"📝 Database updated: {len(self.daily_data)} channels total.")
 
             except Exception as e:
-                await message.reply(f"❌ Error: {e}")
+                await message.reply(f"❌ Critical Error: {e}")
 
         # === 5. REMOVE ===
         elif cmd == "!remove_daily":
@@ -193,7 +209,7 @@ class DailyBot(discord.Client):
                         del self.daily_data[cid]
                         deleted.append(cid)
                 self.save_data()
-                await message.reply(f"🗑️ Menghapus {len(deleted)} jadwal.")
+                await message.reply(f"🗑️ Berhasil menghapus {len(deleted)} jadwal dari database.")
             except: pass
 
         # === 6. LIST RAPI ===
@@ -206,11 +222,10 @@ class DailyBot(discord.Client):
 
                 i = 1
                 for cid, m in self.daily_data.items():
-                    # Format Rapi per Item
                     entry = (
-                        f"#{i} ID   : {cid}\n"
-                        f"   AM   : \"{m['am'][:30]}...\"\n"
-                        f"   PM   : \"{m['pm'][:30]}...\"\n\n"
+                        f"#{i} ID    : {cid}\n"
+                        f"   AM    : \"{m['am'][:30]}...\"\n"
+                        f"   PM    : \"{m['pm'][:30]}...\"\n\n"
                     )
 
                     if len(current_chunk) + len(entry) > 1900:
@@ -273,14 +288,17 @@ class DailyBot(discord.Client):
         )
 
         if failed_details:
-            report += "\nDETAIL ERROR:\n" + "\n".join(failed_details)
+            # Potong jika terlalu panjang
+            error_msg = "\nDETAIL ERROR:\n" + "\n".join(failed_details)
+            if len(report + error_msg) < 1950:
+                report += error_msg
+            else:
+                report += "\n(Detail error terlalu panjang, cek console)"
+                print(error_msg)
 
         report += "```"
 
-        if len(report) > 1900:
-            await self.send_log(report[:1900] + "...\n```")
-        else:
-            await self.send_log(report)
+        await self.send_log(report)
 
     # === SCHEDULE OTOMATIS ===
     @tasks.loop(seconds=60) 
@@ -288,22 +306,39 @@ class DailyBot(discord.Client):
         now = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
         current_time = now.strftime("%H:%M")
 
+        # LOGIKA TRIGGER
         if current_time == "07:00":
             if not self.sent_today_am: 
                 await self.run_batch("AUTO (PAGI)", "am", delay=2)
-                self.sent_today_am = True; self.sent_today_pm = False 
+                self.sent_today_am = True
+                self.sent_today_pm = False # Reset flag malam
 
         elif current_time == "19:00":
             if not self.sent_today_pm:
                 await self.run_batch("AUTO (MALAM)", "pm", delay=2)
-                self.sent_today_pm = True; self.sent_today_am = False 
+                self.sent_today_pm = True
+                self.sent_today_am = False # Reset flag pagi
 
-        else:
-            if current_time == "07:01": self.sent_today_am = True
-            if current_time == "19:01": self.sent_today_pm = True
+        # Reset flag manual jika bot restart lewat jam trigger
+        # (Opsional, tapi membantu menjaga state)
+        if current_time == "07:05": self.sent_today_am = True
+        if current_time == "19:05": self.sent_today_pm = True
 
+    @scheduler_task.before_loop
+    async def before_scheduler(self):
+        # Tunggu sampai bot benar-benar siap sebelum loop jalan
+        await self.wait_until_ready()
+
+# === ENTRY POINT YANG DISEMPURNAKAN ===
 if __name__ == "__main__":
     if DISCORD_USER_TOKEN:
-        client = DailyBot()
-        client.run(DISCORD_USER_TOKEN)
+        try:
+            client = DailyBot()
+            client.run(DISCORD_USER_TOKEN)
+        except discord.errors.LoginFailure:
+            print("❌ TOKEN SALAH: Periksa kembali DISCORD_TOKEN anda.")
+        except Exception as e:
+            print(f"❌ TERJADI ERROR FATAL: {e}")
     else:
+        print("❌ CONFIG ERROR: Token tidak ditemukan.")
+        print("   Set environment variable 'DISCORD_TOKEN' atau edit file ini.")
