@@ -1,2 +1,6 @@
-discord.py-self>=1.9.2
-python-dotenv
+discord.py-self@git+https://github.com/dolfies/discord.py-self@71609f4f62649d18bdf14f0e286b7e62bc605390
+pytz==2024.1
+yarl==1.20.0
+frozenlist==1.6.0
+multidict==6.4.4
+propcache==0.3.1
