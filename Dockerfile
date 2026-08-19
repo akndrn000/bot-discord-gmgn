@@ -2,8 +2,8 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install dependencies system jika diperlukan
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
