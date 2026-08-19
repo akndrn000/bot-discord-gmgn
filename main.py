@@ -59,20 +59,33 @@ last_sent_gm_date = None
 last_sent_gn_date = None
 
 GM_WEIGHTED_MESSAGES = [
-    ("gm", 40), ("gm guys", 25), ("gm frens", 20), ("gm all", 15),
-    ("good morning", 10), ("gm! hope u all have a great day", 6),
-    ("gm ser", 6), ("morning everyone", 5), ("gm coffee time", 4),
-    ("pagi gess, semangat cuannya hari ini", 2), ("gm! ready to grind today?", 2),
-    ("gm, semoga hari ini hijau semua portfolionya", 1)
+    ("gm", 40),
+    ("gm guys", 25),
+    ("gm frens", 20),
+    ("gm all", 15),
+    ("good morning", 10),
+    ("gm ser", 6),
+    ("morning all", 6),
+    ("gm fam", 5),
+    ("gm world", 4),
+    ("gm everyone", 2),
+    ("gm! time to grind", 2),
+    ("gm! have a good one", 1)
 ]
 
 GN_WEIGHTED_MESSAGES = [
-    ("gn", 40), ("gn guys", 25), ("gn frens", 20), ("gn all", 15),
-    ("good night", 10), ("gn! sleep well everyone", 6), ("gn ser", 6),
-    ("night guys", 5), ("off to sleep, gn", 4),
-    ("istirahat dlu gess, capek mantengin chart", 2),
-    ("gn, sleep tight and sweet dreams", 2),
-    ("tutup laptop, waktunya istirahat. gn!", 1)
+    ("gn", 40),
+    ("gn guys", 25),
+    ("gn frens", 20),
+    ("gn all", 15),
+    ("good night", 10),
+    ("gn ser", 6),
+    ("night all", 6),
+    ("gn fam", 5),
+    ("gn sleep well", 4),
+    ("gn world", 2),
+    ("gn sleep tight", 2),
+    ("gn everyone", 1)
 ]
 
 def get_random_message(weighted_list):
