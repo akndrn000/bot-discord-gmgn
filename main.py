@@ -32,7 +32,6 @@ def save_config(config_data):
     except Exception as e:
         print(f"[❌] Gagal menyimpan {CONFIG_FILE}: {e}")
 
-# Memuat konfigurasi awal
 config = load_config()
 
 # === Konfigurasi Environment Variables ===
@@ -40,15 +39,12 @@ DISCORD_USER_TOKEN = os.getenv("DISCORD_USER_TOKEN", "")
 MONITOR_CHANNEL_ID = int(os.getenv("MONITOR_CHANNEL_ID", "0"))
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Jakarta")
 
-# Inisialisasi Self-Bot Client
 client = commands.Bot(command_prefix="!", self_bot=True)
 
-# State penanda tanggal terakhir pesan dikirim (Mencegah pengiriman ganda)
 last_sent_gm_date = None
 last_sent_gn_date = None
 
-# === Variasi Pesan GM & GN dengan Sistem Rarity (Bobot Kemunculan) ===
-# Semakin besar bobot angka, semakin sering pesan tersebut muncul.
+# === Variasi Pesan GM & GN dengan Sistem Rarity ===
 GM_WEIGHTED_MESSAGES = [
     ("gm", 40),
     ("gm guys", 25),
@@ -80,7 +76,6 @@ GN_WEIGHTED_MESSAGES = [
 ]
 
 def get_random_message(weighted_list):
-    """Memilih pesan berdasarkan sistem bobot (rarity)."""
     messages, weights = zip(*weighted_list)
     return random.choices(messages, weights=weights, k=1)[0]
 
@@ -88,7 +83,7 @@ def get_menu_text():
     return (
         "🤖 **BOT GM/GN ON**\n"
         "───────────────────────────────\n"
-        "📌 **MENU PERINTAH:**\n"
+        "📌 **MENU PERINTAH (Hanya di Channel Pemantau):**\n"
         "• `!set <id1> <id2>` : Tambah 1 atau banyak target channel sekaligus\n"
         "• `!time gm:07.00, gn:19.00` : Atur jam kirim GM dan GN\n"
         "• `!list` : Lihat daftar target channel & jadwal aktif\n"
@@ -98,7 +93,6 @@ def get_menu_text():
     )
 
 async def send_log(message_text: str):
-    """Mengirim pesan log/notifikasi ke channel pemantau."""
     print(message_text)
     if MONITOR_CHANNEL_ID != 0:
         try:
@@ -118,9 +112,11 @@ async def on_ready():
 
 @client.event
 async def on_message(message: Message):
+    # 1. Pastikan pesan dikirim oleh akun Anda sendiri
     if message.author.id != client.user.id:
         return
 
+    # 2. STRICT CHECK: Perintah hanya akan diproses jika diketik di MONITOR_CHANNEL_ID
     if MONITOR_CHANNEL_ID != 0 and message.channel.id != MONITOR_CHANNEL_ID:
         return
 
@@ -257,12 +253,10 @@ async def gm_gn_scheduler():
     if not channels:
         return
 
-    # Pengecekan Jam GM
     if current_time_str == target_gm and last_sent_gm_date != current_date_str:
         last_sent_gm_date = current_date_str
         await broadcast_message(GM_WEIGHTED_MESSAGES, "GM")
 
-    # Pengecekan Jam GN
     elif current_time_str == target_gn and last_sent_gn_date != current_date_str:
         last_sent_gn_date = current_date_str
         await broadcast_message(GN_WEIGHTED_MESSAGES, "GN")
@@ -275,10 +269,7 @@ async def broadcast_message(messages_weighted_list, mode_label):
         try:
             channel = client.get_channel(cid) or await client.fetch_channel(cid)
             if channel:
-                # Jeda acak 2–6 detik antar channel agar tampak natural
                 await asyncio.sleep(random.randint(2, 6))
-                
-                # Mengambil pesan berdasarkan sistem rarity
                 msg_content = get_random_message(messages_weighted_list)
                 await channel.send(msg_content)
                 await send_log(f"✅ [{mode_label}] Terkirim ke `{cid}`: *\"{msg_content}\"*")
