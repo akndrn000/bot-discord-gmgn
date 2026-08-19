@@ -2,275 +2,266 @@ import os
 import json
 import asyncio
 import random
-import pytz
+import discord
+from discord.ext import commands
 from datetime import datetime
-from discord.ext import tasks, commands
-from discord import Message
+import pytz
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-# === Jalur Penyimpanan Config (Mendukung Railway Volume di /data) ===
-DATA_DIR = "/data" if os.path.exists("/data") else "."
-CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+# ==========================================
+# KONFIGURASI VARIABEL & VARIASI KATA (RARITY)
+# ==========================================
+
+CONFIG_FILE = 'config.json'
+TIMEZONE_STR = "Asia/Jakarta"
+COMMAND_PREFIX = "!"
+
+# GM (Bahasa Inggris) - Didominasi "gm" & "morning" (Common), diselingi variasi (Rare)
+GM_VARIATIONS = [
+    # Common (Sering Muncul)
+    "gm", "gm", "gm", "gm", "gm", "gm", "gm", "gm", "gm", "gm",
+    "morning", "morning", "morning", "morning", "morning",
+    # Rare (Jarang Muncul)
+    "gm guys",
+    "gm everyone",
+    "good morning!",
+    "morning y'all",
+    "gm gm",
+    "gm chat",
+    "rise and grind",
+    "top of the morning"
+]
+
+# GN (Bahasa Inggris) - Didominasi "gn" & "night" (Common), diselingi variasi (Rare)
+GN_VARIATIONS = [
+    # Common (Sering Muncul)
+    "gn", "gn", "gn", "gn", "gn", "gn", "gn", "gn", "gn", "gn",
+    "night", "night", "night", "night", "night",
+    # Rare (Jarang Muncul)
+    "gn guys",
+    "gn everyone",
+    "good night!",
+    "sleep well",
+    "gn chat",
+    "gn y'all",
+    "off to sleep",
+    "sweet dreams"
+]
+
+TXT_BOT_ONLINE = "🟢 **BOT GM/GN AUTOMATION AKTIF!**\nBerhasil login sebagai:"
+
+HELP_MENU_BOX = """
+```text
+=====================================================
+          🤖 MENU BANTUAN GM / GN AUTOMATION
+=====================================================
+!set <id1> <id2>   : Tambah target channel (1 / banyak)
+!time gm:07.00, gn:19.00 : Atur jadwal kirim GM & GN
+!monitor <id>      : Set channel pemantau log / bukti
+!list              : Lihat konfigurasi & target aktif
+!stop <id>         : Hapus 1 ID target dari daftar
+=====================================================
+```"""
+
+# ==========================================
+# LOGIK SISTEM & ENGINE BOT
+# ==========================================
 
 def load_config():
-    default_config = {
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    return {
         "gm_time": "07:00",
         "gn_time": "19:00",
+        "monitor_channel_id": None,
         "target_channels": []
     }
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[⚠️] Gagal membaca {CONFIG_FILE}: {e}")
-    return default_config
 
 def save_config(config_data):
-    try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config_data, f, indent=4)
-    except Exception as e:
-        print(f"[❌] Gagal menyimpan {CONFIG_FILE}: {e}")
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config_data, f, indent=4)
 
-# Memuat konfigurasi awal
 config = load_config()
 
-# === Konfigurasi Environment Variables ===
-DISCORD_USER_TOKEN = os.getenv("DISCORD_USER_TOKEN", "")
-MONITOR_CHANNEL_ID = int(os.getenv("MONITOR_CHANNEL_ID", "0"))
-TIMEZONE = os.getenv("TIMEZONE", "Asia/Jakarta")
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
+scheduler = AsyncIOScheduler(timezone=pytz.timezone(TIMEZONE_STR))
 
-# Inisialisasi Self-Bot Client
-client = commands.Bot(command_prefix="!", self_bot=True)
-
-# State penanda tanggal terakhir pesan dikirim (Mencegah pengiriman ganda)
-last_sent_gm_date = None
-last_sent_gn_date = None
-
-# Variasi Pesan Otomatis
-GM_MESSAGES = [
-    "gm", 
-    "gm guys", 
-    "gm frens", 
-    "gm all", 
-    "good morning", 
-    "gm! hope u all have a great day"
-]
-
-GN_MESSAGES = [
-    "gn", 
-    "gn guys", 
-    "gn frens", 
-    "gn all", 
-    "good night", 
-    "gn! sleep well everyone"
-]
-
-def get_menu_text():
-    return (
-        "🤖 **BOT GM/GN ON**\n"
-        "───────────────────────────────\n"
-        "📌 **MENU PERINTAH:**\n"
-        "• `!set <id1> <id2>` : Tambah 1 atau banyak target channel sekaligus\n"
-        "• `!time gm:07.00, gn:19.00` : Atur jam kirim GM dan GN\n"
-        "• `!list` : Lihat daftar target channel & jadwal aktif\n"
-        "• `!stop <id>` : Hapus 1 ID channel dari target\n"
-        "• `!menu` : Tampilkan menu bantuan ini\n"
-        "───────────────────────────────"
-    )
-
-async def send_log(message_text: str):
-    """Mengirim pesan log/notifikasi ke channel pemantau."""
-    print(message_text)
-    if MONITOR_CHANNEL_ID != 0:
+async def log_to_monitor(content):
+    """Mengirim log bukti pengiriman ke channel pemantau."""
+    monitor_id = config.get("monitor_channel_id")
+    if monitor_id:
         try:
-            channel = client.get_channel(MONITOR_CHANNEL_ID) or await client.fetch_channel(MONITOR_CHANNEL_ID)
+            channel = bot.get_channel(int(monitor_id)) or await bot.fetch_channel(int(monitor_id))
             if channel:
-                await channel.send(message_text)
+                await channel.send(content)
         except Exception as e:
-            print(f"[❌] Gagal kirim pesan ke channel pemantau ({MONITOR_CHANNEL_ID}): {e}")
+            print(f"[ERROR MONITOR] Gagal mengirim log: {e}")
 
-@client.event
+async def send_daily_message(message_type):
+    """Fungsi pengiriman pesan otomatis dengan sistem rarity variasi teks."""
+    targets = config.get("target_channels", [])
+    if not targets:
+        await log_to_monitor(f"⚠️ **[{message_type}]** Jadwal terpicu, namun belum ada target channel yang diset.")
+        return
+
+    # Pilih teks secara acak berdasarkan bobot rarity list
+    if message_type == "GM":
+        text_to_send = random.choice(GM_VARIATIONS)
+    else:
+        text_to_send = random.choice(GN_VARIATIONS)
+
+    timestamp = datetime.now(pytz.timezone(TIMEZONE_STR)).strftime("%Y-%m-%d %H:%M:%S")
+    await log_to_monitor(f"🚀 **[{message_type}]** Mengirim teks: *\"{text_to_send}\"* pada `{timestamp}` ke {len(targets)} channel...")
+
+    success_count = 0
+    fail_count = 0
+
+    for ch_id in targets:
+        try:
+            channel = bot.get_channel(int(ch_id)) or await bot.fetch_channel(int(ch_id))
+            if channel:
+                await channel.send(text_to_send)
+                success_count += 1
+                server_name = channel.guild.name if hasattr(channel, 'guild') else 'DM'
+                await log_to_monitor(f"✅ **BUKTI TERKIRIM [{message_type}]** -> Server: `{server_name}` | Channel: `{channel.name}` (`{ch_id}`) | Teks: *\"{text_to_send}\"*")
+                await asyncio.sleep(3)  # Jeda 3 detik untuk pencegahan rate-limit
+        except Exception as e:
+            fail_count += 1
+            await log_to_monitor(f"❌ **GAGAL [{message_type}]** -> Channel ID `{ch_id}` | Error: `{e}`")
+
+    await log_to_monitor(f"📊 **LAPORAN [{message_type}] SELESAI** | Berhasil: {success_count} | Gagal: {fail_count}")
+
+def setup_scheduler():
+    scheduler.remove_all_jobs()
+    gm_h, gm_m = config["gm_time"].split(":")
+    gn_h, gn_m = config["gn_time"].split(":")
+
+    scheduler.add_job(send_daily_message, 'cron', hour=int(gm_h), minute=int(gm_m), args=["GM"])
+    scheduler.add_job(send_daily_message, 'cron', hour=int(gn_h), minute=int(gn_m), args=["GN"])
+
+@bot.event
 async def on_ready():
-    print(f"[✅] Login sebagai {client.user}")
-    # Kirim status ON beserta Menu saat pertama kali bot terhubung
-    await send_log(get_menu_text())
-    
-    if not gm_gn_scheduler.is_running():
-        gm_gn_scheduler.start()
-
-@client.event
-async def on_message(message: Message):
-    # Hanya tanggapi perintah dari akun sendiri
-    if message.author.id != client.user.id:
-        return
-
-    # Batasi perintah hanya jika dikirim di channel pemantau
-    if MONITOR_CHANNEL_ID != 0 and message.channel.id != MONITOR_CHANNEL_ID:
-        return
-
-    ctx = await client.get_context(message)
-    if ctx.valid:
-        await client.invoke(ctx)
-
-# === Command: !menu ===
-@client.command(name="menu")
-async def show_menu(ctx):
-    await ctx.send(get_menu_text())
-
-# === Command: !set ===
-@client.command(name="set")
-async def set_channel(ctx, *channel_ids: str):
-    if not channel_ids:
-        await ctx.send("❌ Harap masukkan setidaknya satu ID channel.\n*Contoh:* `!set 123456789 987654321`")
-        return
-
-    added, already_exist, invalid = [], [], []
-
-    for cid in channel_ids:
-        if not cid.isdigit():
-            invalid.append(cid)
-            continue
+    print(f"BOT AKTIF sebagai {bot.user.name} ({bot.user.id})")
+    setup_scheduler()
+    if not scheduler.running:
+        scheduler.start()
         
-        cid_int = int(cid)
-        if cid_int not in config["target_channels"]:
-            config["target_channels"].append(cid_int)
-            added.append(str(cid_int))
-        else:
-            already_exist.append(str(cid_int))
+    status_msg = f"{TXT_BOT_ONLINE} `{bot.user.name}`\n{HELP_MENU_BOX}"
+    await log_to_monitor(status_msg)
+
+# ==========================================
+# DAFTAR PERINTAH (COMMANDS)
+# ==========================================
+
+@bot.command()
+async def set(ctx, *channel_ids: str):
+    """Menambahkan 1 atau banyak ID channel target sekaligus."""
+    if not channel_ids:
+        await ctx.send("❌ Harap sertakan ID channel. Contoh: `!set 123456789 987654321`")
+        return
+
+    added = []
+    already = []
+    for cid in channel_ids:
+        if cid.isdigit():
+            if int(cid) not in config["target_channels"]:
+                config["target_channels"].append(int(cid))
+                added.append(cid)
+            else:
+                already.append(cid)
 
     save_config(config)
-
-    res = "✅ **Pembaruan Channel Target:**\n"
-    if added:
-        res += f"• **Ditambahkan:** {', '.join(added)}\n"
-    if already_exist:
-        res += f"• **Sudah Ada:** {', '.join(already_exist)}\n"
-    if invalid:
-        res += f"• **Format Tidak Valid:** {', '.join(invalid)}\n"
-
+    res = f"✅ Berhasil menambahkan `{len(added)}` channel target."
+    if already:
+        res += f"\n⚠️ Channel sudah ada sebelumnya: `{', '.join(already)}`"
+    
     await ctx.send(res)
+    await log_to_monitor(f"📝 **[UPDATE TARGET]** Channel ditambahkan: `{', '.join(added)}` oleh `{ctx.author.name}`")
 
-# === Command: !time ===
-@client.command(name="time")
-async def set_time(ctx, *, time_str: str = None):
-    if not time_str:
-        await ctx.send("❌ Format salah.\n*Contoh:* `!time gm:07.00, gn:19.00` atau `!time gm:07:00, gn:19:00`")
+@bot.command()
+async def monitor(ctx, channel_id: str):
+    """Mengatur channel pemantau log bukti."""
+    if not channel_id.isdigit():
+        await ctx.send("❌ ID Channel harus berupa angka.")
         return
 
+    config["monitor_channel_id"] = int(channel_id)
+    save_config(config)
+    await ctx.send(f"✅ Channel pemantau berhasil diatur ke ID: `{channel_id}`")
+    
+    status_msg = f"📢 **CHANNEL PEMANTAU DITETAPKAN**\n{HELP_MENU_BOX}"
+    await log_to_monitor(status_msg)
+
+@bot.command()
+async def time(ctx, *, args: str):
+    """Mengatur waktu GM dan GN. Format: !time gm:07.00, gn:19.00"""
     try:
-        clean_str = time_str.replace('.', ':').lower()
-        parts = [p.strip() for p in clean_str.split(',')]
-        
-        new_gm, new_gn = None, None
+        parts = args.split(',')
+        gm_part = None
+        gn_part = None
 
-        for part in parts:
-            if part.startswith("gm:"):
-                new_gm = part.replace("gm:", "").strip()
-            elif part.startswith("gn:"):
-                new_gn = part.replace("gn:", "").strip()
+        for p in parts:
+            p = p.strip().lower()
+            if p.startswith("gm:"):
+                gm_part = p.replace("gm:", "").strip().replace(".", ":")
+            elif p.startswith("gn:"):
+                gn_part = p.replace("gn:", "").strip().replace(".", ":")
 
-        if new_gm:
-            datetime.strptime(new_gm, "%H:%M")
-            config["gm_time"] = new_gm
-        if new_gn:
-            datetime.strptime(new_gn, "%H:%M")
-            config["gn_time"] = new_gn
-
-        save_config(config)
-        await ctx.send(f"⏰ **Jadwal Diperbarui:**\n• **GM:** `{config['gm_time']}` | **GN:** `{config['gn_time']}`")
-
-    except ValueError:
-        await ctx.send("❌ Format jam tidak valid. Gunakan format 24 Jam (`HH:MM`).")
+        if gm_part and gn_part:
+            config["gm_time"] = gm_part
+            config["gn_time"] = gn_part
+            save_config(config)
+            setup_scheduler()
+            await ctx.send(f"✅ Waktu berhasil diubah!\n☀️ **GM:** `{gm_part}` WIB\n🌙 **GN:** `{gn_part}` WIB")
+            await log_to_monitor(f"⏰ **[UPDATE WAKTU]** GM diatur ke `{gm_part}`, GN diatur ke `{gn_part}`")
+        else:
+            await ctx.send("❌ Format salah! Gunakan: `!time gm:07.00, gn:19.00`")
     except Exception as e:
-        await ctx.send(f"❌ Terjadi kesalahan: {e}")
+        await ctx.send(f"❌ Gagal memproses format waktu: {e}")
 
-# === Command: !list ===
-@client.command(name="list")
-async def list_channels(ctx):
-    channels = config.get("target_channels", [])
-    gm_t = config.get("gm_time", "Belum diatur")
-    gn_t = config.get("gn_time", "Belum diatur")
-
-    msg = f"📋 **Status Konfigurasi Saat Ini:**\n"
-    msg += f"• **GM Time:** `{gm_t}`\n"
-    msg += f"• **GN Time:** `{gn_t}`\n"
-    msg += f"• **Total Target Channel:** `{len(channels)}`\n\n"
-
-    if channels:
-        msg += "**Daftar Channel ID Target:**\n"
-        for idx, cid in enumerate(channels, 1):
+@bot.command()
+async def list(ctx):
+    """Menampilkan daftar konfigurasi dan target channel."""
+    targets = config.get("target_channels", [])
+    monitor_id = config.get("monitor_channel_id", "Belum di-set")
+    
+    msg = "**📋 PENGATURAN & TARGET CHANNEL AKTIF**\n"
+    msg += f"• **Waktu GM:** `{config['gm_time']}` WIB\n"
+    msg += f"• **Waktu GN:** `{config['gn_time']}` WIB\n"
+    msg += f"• **Channel Pemantau:** `{monitor_id}`\n"
+    msg += f"• **Total Target Channel:** `{len(targets)}`\n\n"
+    
+    if targets:
+        msg += "**List Channel ID:**\n"
+        for idx, cid in enumerate(targets, 1):
             msg += f"{idx}. `{cid}`\n"
     else:
-        msg += "*Belum ada target channel. Gunakan `!set <channel_id>`.*"
+        msg += "⚠️ *Belum ada channel target yang terdaftar.*"
 
     await ctx.send(msg)
 
-# === Command: !stop ===
-@client.command(name="stop")
-async def stop_channel(ctx, channel_id: str = None):
-    if not channel_id or not channel_id.isdigit():
-        await ctx.send("❌ Masukkan ID channel yang valid. *Contoh:* `!stop 123456789`")
+@bot.command()
+async def stop(ctx, channel_id: str):
+    """Menghapus 1 ID channel target."""
+    if not channel_id.isdigit():
+        await ctx.send("❌ ID Channel harus berupa angka.")
         return
 
-    cid_int = int(channel_id)
-    if cid_int in config["target_channels"]:
-        config["target_channels"].remove(cid_int)
+    cid = int(channel_id)
+    if cid in config["target_channels"]:
+        config["target_channels"].remove(cid)
         save_config(config)
-        await ctx.send(f"🗑️ Berhasil menghapus channel `{channel_id}` dari target.")
+        await ctx.send(f"✅ Channel ID `{channel_id}` berhasil dihapus dari target.")
+        await log_to_monitor(f"🗑️ **[REMOVE TARGET]** ID Channel `{channel_id}` dihapus dari daftar.")
     else:
-        await ctx.send(f"⚠️ Channel ID `{channel_id}` tidak ditemukan di daftar.")
-
-# === Task Scheduler GM/GN ===
-@tasks.loop(seconds=30)
-async def gm_gn_scheduler():
-    global last_sent_gm_date, last_sent_gn_date
-
-    try:
-        tz = pytz.timezone(TIMEZONE)
-    except Exception:
-        tz = pytz.timezone("Asia/Jakarta")
-
-    now = datetime.now(tz)
-    current_time_str = now.strftime("%H:%M")
-    current_date_str = now.strftime("%Y-%m-%d")
-
-    target_gm = config.get("gm_time")
-    target_gn = config.get("gn_time")
-    channels = config.get("target_channels", [])
-
-    if not channels:
-        return
-
-    # Pengecekan Jam GM
-    if current_time_str == target_gm and last_sent_gm_date != current_date_str:
-        last_sent_gm_date = current_date_str
-        await broadcast_message(GM_MESSAGES, "GM")
-
-    # Pengecekan Jam GN
-    elif current_time_str == target_gn and last_sent_gn_date != current_date_str:
-        last_sent_gn_date = current_date_str
-        await broadcast_message(GN_MESSAGES, "GN")
-
-async def broadcast_message(messages_list, mode_label):
-    channels = config.get("target_channels", [])
-    await send_log(f"🚀 Memulai pengiriman **{mode_label}** ke {len(channels)} channel...")
-
-    for cid in channels:
-        try:
-            channel = client.get_channel(cid) or await client.fetch_channel(cid)
-            if channel:
-                # Jeda acak 2–6 detik antar channel agar alami
-                await asyncio.sleep(random.randint(2, 6))
-                
-                msg_content = random.choice(messages_list)
-                await channel.send(msg_content)
-                await send_log(f"✅ [{mode_label}] Terkirim ke `{cid}`: *\"{msg_content}\"*")
-        except Exception as e:
-            await send_log(f"❌ [{mode_label}] Gagal kirim ke `{cid}`: {e}")
+        await ctx.send(f"❌ ID Channel `{channel_id}` tidak ditemukan dalam daftar.")
 
 if __name__ == "__main__":
-    if not DISCORD_USER_TOKEN:
-        print("[❌] ERROR: Variable DISCORD_USER_TOKEN belum diisi di Environment Variables Railway!")
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if not TOKEN:
+        print("ERROR: Environment variable DISCORD_TOKEN belum diisi!")
     else:
-        client.run(DISCORD_USER_TOKEN)
+        bot.run(TOKEN)
