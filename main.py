@@ -4,6 +4,22 @@ import asyncio
 import random
 import pytz
 from datetime import datetime
+
+# === PATCH ANTI CRASH DISCORD GATEWAY ===
+import discord.state
+original_parse_ready_supplemental = discord.state.ConnectionState.parse_ready_supplemental
+
+def patched_parse_ready_supplemental(self, data):
+    if data and data.get('pending_payments') is None:
+        data['pending_payments'] = []
+    try:
+        original_parse_ready_supplemental(self, data)
+    except Exception:
+        pass
+
+discord.state.ConnectionState.parse_ready_supplemental = patched_parse_ready_supplemental
+# ========================================
+
 from discord.ext import tasks, commands
 from discord import Message
 
@@ -98,7 +114,6 @@ async def on_ready():
 async def on_message(message: Message):
     if message.author.id != client.user.id:
         return
-    
     if MONITOR_CHANNEL_ID != 0 and message.channel.id != MONITOR_CHANNEL_ID:
         return
 
