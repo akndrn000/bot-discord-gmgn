@@ -72,6 +72,7 @@ def get_menu_text():
         "• `!time gm:07.00, gn:19.00` : Atur jam GM/GN\n"
         "• `!list` : Lihat daftar target & jadwal\n"
         "• `!stop <id>` : Hapus channel dari target\n"
+        "• `!test gm` atau `!test gn` : Tes kirim manual\n"
         "• `!menu` : Tampilkan menu bantuan\n"
         "───────────────────────────────"
     )
@@ -98,7 +99,6 @@ async def on_message(message: Message):
     if message.author.id != client.user.id:
         return
     
-    # Kunci mutlak: Abaikan semua pesan perintah jika diketik di luar channel pemantau
     if MONITOR_CHANNEL_ID != 0 and message.channel.id != MONITOR_CHANNEL_ID:
         return
 
@@ -176,26 +176,16 @@ async def stop_channel(ctx, channel_id: str = None):
     else:
         await ctx.send(f"⚠️ Channel `{channel_id}` tidak ditemukan.")
 
-@tasks.loop(seconds=30)
-async def gm_gn_scheduler():
-    global last_sent_gm_date, last_sent_gn_date
-    try:
-        tz = pytz.timezone(TIMEZONE)
-    except Exception:
-        tz = pytz.timezone("Asia/Jakarta")
-    now = datetime.now(tz)
-    t_str = now.strftime("%H:%M")
-    d_str = now.strftime("%Y-%m-%d")
-    
-    if not config.get("target_channels"):
+@client.command(name="test")
+async def test_broadcast(ctx, mode: str = None):
+    if not mode or mode.lower() not in ["gm", "gn"]:
+        await ctx.send("❌ Format salah. Gunakan: `!test gm` atau `!test gn`")
         return
-
-    if t_str == config.get("gm_time") and last_sent_gm_date != d_str:
-        last_sent_gm_date = d_str
-        await broadcast(GM_WEIGHTED_MESSAGES, "GM")
-    elif t_str == config.get("gn_time") and last_sent_gn_date != d_str:
-        last_sent_gn_date = d_str
-        await broadcast(GN_WEIGHTED_MESSAGES, "GN")
+    
+    label = mode.upper()
+    messages = GM_WEIGHTED_MESSAGES if label == "GM" else GN_WEIGHTED_MESSAGES
+    await ctx.send(f"🧪 **[TES MANUAL]** Mengirimkan {label} ke target channel...")
+    await broadcast(messages, f"TEST-{label}")
 
 async def broadcast(w_list, label):
     for cid in config.get("target_channels", []):
@@ -207,6 +197,37 @@ async def broadcast(w_list, label):
                 await ch.send(msg)
         except Exception:
             pass
+
+@tasks.loop(seconds=10)
+async def gm_gn_scheduler():
+    global last_sent_gm_date, last_sent_gn_date
+    try:
+        tz = pytz.timezone(TIMEZONE)
+    except Exception:
+        tz = pytz.timezone("Asia/Jakarta")
+    
+    now = datetime.now(tz)
+    current_time_str = now.strftime("%H:%M")
+    current_date_str = now.strftime("%Y-%m-%d")
+    
+    channels = config.get("target_channels", [])
+    if not channels:
+        return
+
+    target_gm = config.get("gm_time")
+    target_gn = config.get("gn_time")
+
+    if target_gm and current_time_str >= target_gm and last_sent_gm_date != current_date_str:
+        gm_hour, gm_min = map(int, target_gm.split(":"))
+        if now.hour == gm_hour and (now.minute - gm_min) <= 5:
+            last_sent_gm_date = current_date_str
+            await broadcast(GM_WEIGHTED_MESSAGES, "GM")
+
+    if target_gn and current_time_str >= target_gn and last_sent_gn_date != current_date_str:
+        gn_hour, gn_min = map(int, target_gn.split(":"))
+        if now.hour == gn_hour and (now.minute - gn_min) <= 5:
+            last_sent_gn_date = current_date_str
+            await broadcast(GN_WEIGHTED_MESSAGES, "GN")
 
 if __name__ == "__main__":
     if DISCORD_USER_TOKEN:
