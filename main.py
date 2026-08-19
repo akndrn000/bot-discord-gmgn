@@ -9,19 +9,19 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # ==========================================
-# KONFIGURASI VARIABEL & VARIASI KATA (RARITY)
+# ⚙️ KONFIGURASI VARIABEL UTAMA & KATA
 # ==========================================
 
 CONFIG_FILE = 'config.json'
 TIMEZONE_STR = "Asia/Jakarta"
 COMMAND_PREFIX = "!"
 
-# GM (Bahasa Inggris) - Didominasi "gm" & "morning" (Common), diselingi variasi (Rare)
+# Variasi GM (Bahasa Inggris) dengan Sistem Rarity (Bobot Kemunculan)
 GM_VARIATIONS = [
-    # Common (Sering Muncul)
+    # Kata Sering Muncul (Common)
     "gm", "gm", "gm", "gm", "gm", "gm", "gm", "gm", "gm", "gm",
     "morning", "morning", "morning", "morning", "morning",
-    # Rare (Jarang Muncul)
+    # Kata Variasi Jarang (Rare)
     "gm guys",
     "gm everyone",
     "good morning!",
@@ -32,12 +32,12 @@ GM_VARIATIONS = [
     "top of the morning"
 ]
 
-# GN (Bahasa Inggris) - Didominasi "gn" & "night" (Common), diselingi variasi (Rare)
+# Variasi GN (Bahasa Inggris) dengan Sistem Rarity (Bobot Kemunculan)
 GN_VARIATIONS = [
-    # Common (Sering Muncul)
+    # Kata Sering Muncul (Common)
     "gn", "gn", "gn", "gn", "gn", "gn", "gn", "gn", "gn", "gn",
     "night", "night", "night", "night", "night",
-    # Rare (Jarang Muncul)
+    # Kata Variasi Jarang (Rare)
     "gn guys",
     "gn everyone",
     "good night!",
@@ -48,12 +48,12 @@ GN_VARIATIONS = [
     "sweet dreams"
 ]
 
-TXT_BOT_ONLINE = "🟢 **BOT GM/GN AUTOMATION AKTIF!**\nBerhasil login sebagai:"
+TXT_BOT_ONLINE = "🟢 **SELFBOT GM/GN AUTOMATION AKTIF!**\nBerhasil login menggunakan akun:"
 
 HELP_MENU_BOX = """
 ```text
 =====================================================
-          🤖 MENU BANTUAN GM / GN AUTOMATION
+        🤖 MENU BANTUAN SELFBOT GM / GN
 =====================================================
 !set <id1> <id2>   : Tambah target channel (1 / banyak)
 !time gm:07.00, gn:19.00 : Atur jadwal kirim GM & GN
@@ -64,7 +64,7 @@ HELP_MENU_BOX = """
 ```"""
 
 # ==========================================
-# LOGIK SISTEM & ENGINE BOT
+# 🛠️ LOGIK SISTEM & ENGINE SELFBOT
 # ==========================================
 
 def load_config():
@@ -84,9 +84,8 @@ def save_config(config_data):
 
 config = load_config()
 
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
+# Menggunakan self_bot=True khusus untuk token akun F12
+bot = commands.Bot(command_prefix=COMMAND_PREFIX, self_bot=True)
 scheduler = AsyncIOScheduler(timezone=pytz.timezone(TIMEZONE_STR))
 
 async def log_to_monitor(content):
@@ -107,7 +106,6 @@ async def send_daily_message(message_type):
         await log_to_monitor(f"⚠️ **[{message_type}]** Jadwal terpicu, namun belum ada target channel yang diset.")
         return
 
-    # Pilih teks secara acak berdasarkan bobot rarity list
     if message_type == "GM":
         text_to_send = random.choice(GM_VARIATIONS)
     else:
@@ -127,7 +125,7 @@ async def send_daily_message(message_type):
                 success_count += 1
                 server_name = channel.guild.name if hasattr(channel, 'guild') else 'DM'
                 await log_to_monitor(f"✅ **BUKTI TERKIRIM [{message_type}]** -> Server: `{server_name}` | Channel: `{channel.name}` (`{ch_id}`) | Teks: *\"{text_to_send}\"*")
-                await asyncio.sleep(3)  # Jeda 3 detik untuk pencegahan rate-limit
+                await asyncio.sleep(3)  # Delay 3 detik aman dari rate limit
         except Exception as e:
             fail_count += 1
             await log_to_monitor(f"❌ **GAGAL [{message_type}]** -> Channel ID `{ch_id}` | Error: `{e}`")
@@ -144,7 +142,7 @@ def setup_scheduler():
 
 @bot.event
 async def on_ready():
-    print(f"BOT AKTIF sebagai {bot.user.name} ({bot.user.id})")
+    print(f"SELFBOT AKTIF sebagai {bot.user.name} ({bot.user.id})")
     setup_scheduler()
     if not scheduler.running:
         scheduler.start()
@@ -153,7 +151,7 @@ async def on_ready():
     await log_to_monitor(status_msg)
 
 # ==========================================
-# DAFTAR PERINTAH (COMMANDS)
+# 📌 DAFTAR PERINTAH (COMMANDS)
 # ==========================================
 
 @bot.command()
