@@ -94,7 +94,7 @@ def get_random_message(weighted_list):
 
 def get_menu_text():
     return (
-        "🤖 **BOT GM/GN ON**\n"
+        "🤖 **BOT GM/GN AUTOMATION ON**\n"
         "───────────────────────────────\n"
         "📌 **MENU PERINTAH:**\n"
         "• `!set <id1> <id2>` : Tambah target channel\n"
@@ -113,8 +113,8 @@ async def send_log(message_text: str):
             channel = client.get_channel(MONITOR_CHANNEL_ID) or await client.fetch_channel(MONITOR_CHANNEL_ID)
             if channel:
                 await channel.send(message_text)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Gagal mengirim log ke channel pemantau: {e}")
 
 @client.event
 async def on_ready():
@@ -216,17 +216,45 @@ async def test_broadcast(ctx, mode: str = None):
     await broadcast(messages, f"TEST-{label}")
 
 async def broadcast(w_list, label):
-    for cid in config.get("target_channels", []):
+    targets = config.get("target_channels", [])
+    if not targets:
+        await send_log(f"⚠️ [BROADCAST {label}] Gagal: Tidak ada target channel terdaftar.")
+        return
+
+    await send_log(f"🚀 Memulai pengiriman **{label}** ke `{len(targets)}` channel...")
+    success_count = 0
+    failed_channels = []
+    sent_details = []
+
+    for cid in targets:
         try:
             ch = client.get_channel(cid) or await client.fetch_channel(cid)
             if ch:
-                await asyncio.sleep(random.randint(2, 6))
+                await asyncio.sleep(random.randint(2, 5))
                 msg = get_random_message(w_list)
                 await ch.send(msg)
-        except Exception:
-            pass
+                success_count += 1
+                
+                channel_name = getattr(ch, 'name', str(cid))
+                sent_details.append(f"• <#{cid}> (`#{channel_name}`): `{msg}`")
+            else:
+                failed_channels.append(str(cid))
+        except Exception as e:
+            failed_channels.append(str(cid))
+            print(f"Gagal kirim ke channel {cid}: {e}")
 
-@tasks.loop(seconds=10)
+    report_msg = (
+        f"📊 **LAPORAN BROADCAST: {label}**\n"
+        f"• Status: Selesai (`{success_count}/{len(targets)}` berhasil)\n\n"
+        f"📝 **Detail Pesan Terkirim:**\n" + ("\n".join(sent_details) if sent_details else "Tidak ada pesan terkirim.")
+    )
+    
+    if failed_channels:
+        report_msg += f"\n\n⚠️ Gagal/Invalid: `{', '.join(failed_channels)}`"
+    
+    await send_log(report_msg)
+
+@tasks.loop(seconds=20)
 async def gm_gn_scheduler():
     global last_sent_gm_date, last_sent_gn_date
     try:
@@ -245,17 +273,23 @@ async def gm_gn_scheduler():
     target_gm = config.get("gm_time")
     target_gn = config.get("gn_time")
 
-    if target_gm and current_time_str >= target_gm and last_sent_gm_date != current_date_str:
-        gm_hour, gm_min = map(int, target_gm.split(":"))
-        if now.hour == gm_hour and (now.minute - gm_min) <= 5:
-            last_sent_gm_date = current_date_str
-            await broadcast(GM_WEIGHTED_MESSAGES, "GM")
+    current_minutes = now.hour * 60 + now.minute
 
-    if target_gn and current_time_str >= target_gn and last_sent_gn_date != current_date_str:
-        gn_hour, gn_min = map(int, target_gn.split(":"))
-        if now.hour == gn_hour and (now.minute - gn_min) <= 5:
+    # Validasi & Eksekusi GM Otomatis
+    if target_gm and last_sent_gm_date != current_date_str:
+        gm_h, gm_m = map(int, target_gm.split(":"))
+        gm_total = gm_h * 60 + gm_m
+        if 0 <= (current_minutes - gm_total) <= 15:
+            last_sent_gm_date = current_date_str
+            await broadcast(GM_WEIGHTED_MESSAGES, "GM (Otomatis)")
+
+    # Validasi & Eksekusi GN Otomatis
+    if target_gn and last_sent_gn_date != current_date_str:
+        gn_h, gn_m = map(int, target_gn.split(":"))
+        gn_total = gn_h * 60 + gn_m
+        if 0 <= (current_minutes - gn_total) <= 15:
             last_sent_gn_date = current_date_str
-            await broadcast(GN_WEIGHTED_MESSAGES, "GN")
+            await broadcast(GN_WEIGHTED_MESSAGES, "GN (Otomatis)")
 
 if __name__ == "__main__":
     if DISCORD_USER_TOKEN:
