@@ -46,7 +46,7 @@ Sebelum menjalankan bot, pastikan kamu telah mengatur variabel lingkungan beriku
    * `src/gmgn_bot/` (kode bot)
    * `requirements.txt`
    * `Dockerfile`
-   * `Procfile`
+   * `railway.json` (konfigurasi build & start command Railway)
 2. Buat repositori baru di GitHub dan *push* seluruh file tersebut ke dalam repositori Anda.
 3. Buka [Railway](https://railway.app/), buat proyek baru, lalu pilih **Deploy from GitHub repo** dan hubungkan ke repositori bot Anda.
 4. Masuk ke menu **Variables** di proyek Railway Anda, lalu tambahkan variabel lingkungan (`DISCORD_USER_TOKEN`, `MONITOR_CHANNEL_ID`, dan `TIMEZONE`).
@@ -73,7 +73,7 @@ Sebelum menjalankan bot, pastikan kamu telah mengatur variabel lingkungan beriku
 ├── requirements.txt     # Daftar dependensi runtime (versi disematkan)
 ├── requirements-dev.txt # Dependensi development (pytest, ruff)
 ├── Dockerfile           # Konfigurasi container untuk Docker/Railway
-└── Procfile             # Perintah eksekusi worker
+└── railway.json         # Konfigurasi build & start command Railway
 ```
 
 ---
