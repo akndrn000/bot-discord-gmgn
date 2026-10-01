@@ -50,7 +50,8 @@ Sebelum menjalankan bot, pastikan kamu telah mengatur variabel lingkungan beriku
 2. Buat repositori baru di GitHub dan *push* seluruh file tersebut ke dalam repositori Anda.
 3. Buka [Railway](https://railway.app/), buat proyek baru, lalu pilih **Deploy from GitHub repo** dan hubungkan ke repositori bot Anda.
 4. Masuk ke menu **Variables** di proyek Railway Anda, lalu tambahkan variabel lingkungan (`DISCORD_USER_TOKEN`, `MONITOR_CHANNEL_ID`, dan `TIMEZONE`).
-5. Bot akan otomatis melakukan *build* dan berjalan secara stabil.
+5. Di Settings service, pastikan kolom **Start Command dikosongkan** agar `railway.json` yang berlaku. Jangan pernah mengisinya dengan `PYTHONPATH=src ...` — Railway menjalankannya tanpa shell sehingga deploy gagal di tahap "Create container".
+6. Bot akan otomatis melakukan *build* dan berjalan secara stabil.
 
 ---
 
