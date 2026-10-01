@@ -1,1 +1,1 @@
-worker: PYTHONPATH=src python -m gmgn_bot
+worker: python -m gmgn_bot
