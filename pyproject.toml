@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gmgn-bot"
+version = "1.0.0"
+description = "Discord self-bot untuk pengiriman pesan GM/GN terjadwal"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "discord.py-self @ git+https://github.com/dolfies/discord.py-self.git@2ba64a9a997e151a9c259984e0a179b1fdf4aff4",
+    "pytz==2024.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.ruff.format]
+quote-style = "double"

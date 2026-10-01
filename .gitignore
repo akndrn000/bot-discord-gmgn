@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Env & secrets lokal (jangan commit token asli)
+.env
+
+# Tooling
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Packaging
+*.egg-info/
+build/
+dist/
+
+# Config lokal (di Railway tersimpan di Volume /data)
+config.json
+data/

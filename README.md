@@ -42,8 +42,8 @@ Sebelum menjalankan bot, pastikan kamu telah mengatur variabel lingkungan beriku
 
 ## 🚀 Panduan Instalasi & Deployment (Railway)
 
-1. Buat direktori proyek baru di komputer Anda, lalu masukkan 4 file utama:
-   * `main.py`
+1. Buat direktori proyek baru di komputer Anda, lalu masukkan file-file utama:
+   * `src/gmgn_bot/` (kode bot)
    * `requirements.txt`
    * `Dockerfile`
    * `Procfile`
@@ -57,7 +57,41 @@ Sebelum menjalankan bot, pastikan kamu telah mengatur variabel lingkungan beriku
 ## 📦 Struktur Berkas Proyek
 
 ```text
-├── main.py            # Logika utama bot, scheduler, dan perintah
-├── requirements.txt   # Daftar dependensi pustaka Python
-├── Dockerfile         # Konfigurasi container untuk Docker/Railway
-└── Procfile           # Perintah eksekusi worker
+├── src/gmgn_bot/        # Kode bot (logika per modul)
+│   ├── __init__.py      # Ekspor publik paket
+│   ├── __main__.py      # Titik masuk: python -m gmgn_bot
+│   ├── settings.py      # Baca dan validasi env var (satu tempat)
+│   ├── storage.py       # Baca/tulis config.json (skema sama persis)
+│   ├── messages.py      # Kumpulan pesan + pemilihan rarity
+│   ├── scheduler.py     # Logika jadwal dan pengiriman berkala
+│   ├── commands.py      # Parser dan handler perintah !menu/!set/!time/!list/!stop
+│   ├── client.py        # Pembuatan client Discord dan event handler tipis
+│   └── logging_setup.py # Konfigurasi logging
+├── tests/               # Tes perilaku (pytest)
+├── .env.example         # Contoh variabel lingkungan (tanpa token asli)
+├── pyproject.toml       # Konfigurasi ruff dan pytest
+├── requirements.txt     # Daftar dependensi runtime (versi disematkan)
+├── requirements-dev.txt # Dependensi development (pytest, ruff)
+├── Dockerfile           # Konfigurasi container untuk Docker/Railway
+└── Procfile             # Perintah eksekusi worker
+```
+
+---
+
+## 💻 Cara Menjalankan Lokal
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+set DISCORD_USER_TOKEN=token_anda & set MONITOR_CHANNEL_ID=123 & set TIMEZONE=Asia/Jakarta
+python -m gmgn_bot
+```
+
+## ✅ Cara Menjalankan Tes & Lint
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+ruff check .
+ruff format --check .
+```
